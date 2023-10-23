@@ -43,7 +43,7 @@ const WORKER_JS: &str = include_str!("worker.js");
 
 impl Guest for Component {
     fn init(our: Address) {
-        print_to_terminal(0, "librarian: start2");
+        print_to_terminal(0, "librarian: start");
 
         let bindings_address = Address {
             node: our.node.clone(),
@@ -115,20 +115,19 @@ impl Guest for Component {
 
         loop {
             let Ok((source, message)) = receive() else {
-                print_to_terminal(0, "librarian: got network error");
+                print_to_terminal(1, "librarian: got network error");
                 continue;
             };
             let Message::Request(request) = message else {
-                print_to_terminal(0, "librarian: got unexpected Response");
+                print_to_terminal(1, "librarian: got unexpected Response");
                 continue;
             };
 
             let Some(json) = request.ipc else {
-                print_to_terminal(0, "librarian: got unexpected Request");
+                print_to_terminal(1, "librarian: got unexpected Request");
                 continue;
             };
 
-            print_to_terminal(1, format!("librarian: JSON {}", json).as_str());
             let message_json: serde_json::Value = match serde_json::from_str(&json) {
                 Ok(v) => v,
                 Err(_) => {
@@ -136,8 +135,6 @@ impl Guest for Component {
                     continue;
                 }
             };
-
-            print_to_terminal(0, "librarian: parsed ipc JSON");
 
             if source.process.to_string() == "librarian:librarian:uqbar" {
                 print_to_terminal(0, "librarian: got message from librarian");
@@ -164,7 +161,6 @@ impl Guest for Component {
                         );
                     }
                     "/librarian/worker.js" => {
-                        print_to_terminal(0, "in worker");
                         send_http_response(
                             200,
                             {
@@ -178,6 +174,8 @@ impl Guest for Component {
                         );
                     }
                     "/librarian/vector" => {
+                        // TODO
+                        // this should actually always send a message to drew.uq who will perform this logic and forward it back here later.
                         print_to_terminal(0, "librarian: got request for /librarian/vector");
                         let bytes = get_payload().unwrap().bytes;
                         let res = send_and_await_response(
@@ -226,7 +224,7 @@ impl Guest for Component {
                     }
                 }
             } else {
-                print_to_terminal(0, "librarian: got message from unknown source");
+                print_to_terminal(1, "librarian: got message from unknown source");
             }
         }
     }
