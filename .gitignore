@@ -1,2 +1,4 @@
 target/
 pkg/*.wasm
+
+librarian/src/pinecone-api-key.txt

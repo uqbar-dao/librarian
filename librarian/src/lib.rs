@@ -12,7 +12,7 @@ use std::collections::HashMap;
 #[allow(dead_code)]
 mod process_lib;
 
-const PRELOADED_QUERY: &str = include_str!("query.json");
+const PINECONE_API_KEY: &str = include_str!("pinecone-api-key.txt");
 
 struct Component;
 
@@ -36,13 +36,14 @@ fn send_http_response(status: u16, headers: HashMap<String, String>, payload_byt
     )
 }
 
-// const librarian_PAGE: &str = include_str!("librarian.html");
-// const librarian_JS: &str = include_str!("index.js");
-// const librarian_CSS: &str = include_str!("index.css");
+const LIBRARIAN_PAGE: &str = include_str!("index.html");
+const LIBRARIAN_JS: &str = include_str!("index.js");
+const LIBRARIAN_CSS: &str = include_str!("index.css");
+const WORKER_JS: &str = include_str!("worker.js");
 
 impl Guest for Component {
     fn init(our: Address) {
-        print_to_terminal(0, "librarian: start");
+        print_to_terminal(0, "librarian: start2");
 
         let bindings_address = Address {
             node: our.node.clone(),
@@ -51,7 +52,7 @@ impl Guest for Component {
 
         // <address, request, option<context>, option<payload>>
         let http_endpoint_binding_requests: [(Address, Request, Option<Context>, Option<Payload>);
-            2] = [
+            3] = [
             (
                 bindings_address.clone(),
                 Request {
@@ -62,7 +63,7 @@ impl Guest for Component {
                             "action": "bind-app",
                             "path": "/librarian",
                             "app": "librarian",
-                            "authenticated": true,
+                            "authenticated": false,
                         })
                         .to_string(),
                     ),
@@ -80,6 +81,25 @@ impl Guest for Component {
                         serde_json::json!({
                             "action": "bind-app",
                             "path": "/librarian/vector",
+                            "app": "librarian",
+                            "authenticated": false, // TODO
+                        })
+                        .to_string(),
+                    ),
+                    metadata: None,
+                },
+                None,
+                None,
+            ),
+            (
+                bindings_address.clone(),
+                Request {
+                    inherit: false,
+                    expects_response: None,
+                    ipc: Some(
+                        serde_json::json!({
+                            "action": "bind-app",
+                            "path": "/librarian/worker.js",
                             "app": "librarian",
                             "authenticated": false, // TODO
                         })
@@ -124,56 +144,87 @@ impl Guest for Component {
             } else if source.process.to_string() == "http_bindings:http_bindings:uqbar" {
                 print_to_terminal(0, "librarian: got message from http_bindings");
 
-                // print_to_terminal(0, &json!(PRELOADED_QUERY).to_string());
+                let path = message_json["path"].as_str().unwrap_or("");
+                let mut default_headers = HashMap::new();
+                default_headers.insert("Content-Type".to_string(), "text/html".to_string());
 
-                // let vector = json!(PRELOADED_QUERY);
-
-                // print_to_terminal(0, &vector.to_string());
-
-
-                // let query: Vec<u8> = json!({
-                //     "namespace": "default",
-                //     "includeValues": true,
-                //     "includeMetadata": true,
-                //     "topK": 10,
-                //     "vector": PRELOADED_QUERY.get(1..PRELOADED_QUERY.len() - 1).unwrap(),
-                // }).to_string().as_bytes().to_vec();
-
-                let res = send_and_await_response(
-                    &Address {
-                        node: our.clone().node,
-                        process: ProcessId::from_str("http_client:sys:uqbar").unwrap()
-                    },
-                    &Request {
-                        inherit: false,
-                        metadata: None,
-                        expects_response: Some(5),
-                        ipc: Some(json!({
-                            "method": "POST",
-                            "headers": {
-                                "Api-Key": "",
-                                "accept": "application/json",
-                                "content-type": "application/json"
+                match path {
+                    "/librarian" => {
+                        send_http_response(
+                            200,
+                            default_headers.clone(),
+                            LIBRARIAN_PAGE
+                                .replace("${node}", &our.node)
+                                .replace("${process}", &source.process.to_string())
+                                .replace("${js}", LIBRARIAN_JS)
+                                .replace("${css}", LIBRARIAN_CSS)
+                                .to_string()
+                                .as_bytes()
+                                .to_vec(),
+                        );
+                    }
+                    "/librarian/worker.js" => {
+                        print_to_terminal(0, "in worker");
+                        send_http_response(
+                            200,
+                            {
+                                default_headers.insert("Content-Type".to_string(), "application/javascript".to_string());
+                                default_headers
                             },
-                            "uri": "https://article-recommendations-8a4cf60.svc.us-west4-gcp.pinecone.io/query"
-                        }).to_string())
-                    },
-                    Some(&Payload {
-                        mime: Some("application/octet-stream".to_string()),
-                        bytes: PRELOADED_QUERY.to_string().as_bytes().to_vec(),
-                    })
-                );
-
-                send_http_response(
-                    200,
-                    {
-                        let mut headers = HashMap::new();
-                        headers.insert("content-type".to_string(), "application/json".to_string());
-                        headers
-                    },
-                    get_payload().unwrap().bytes
-
-                );
+                            WORKER_JS
+                                .to_string()
+                                .as_bytes()
+                                .to_vec(),
+                        );
+                    }
+                    "/librarian/vector" => {
+                        print_to_terminal(0, "librarian: got request for /librarian/vector");
+                        let bytes = get_payload().unwrap().bytes;
+                        let res = send_and_await_response(
+                            &Address {
+                                node: our.clone().node,
+                                process: ProcessId::from_str("http_client:sys:uqbar").unwrap()
+                            },
+                            &Request {
+                                inherit: false,
+                                metadata: None,
+                                expects_response: Some(5),
+                                ipc: Some(json!({
+                                    "method": "POST",
+                                    "headers": {
+                                        "Api-Key": PINECONE_API_KEY,
+                                        "accept": "application/json",
+                                        "content-type": "application/json"
+                                    },
+                                    "uri": "https://article-recommendations-8a4cf60.svc.us-west4-gcp.pinecone.io/query"
+                                }).to_string())
+                            },
+                            Some(&Payload {
+                                mime: Some("application/octet-stream".to_string()),
+                                bytes,
+                            })
+                        );
+        
+                        send_http_response(
+                            200,
+                            {
+                                let mut headers = HashMap::new();
+                                headers.insert("content-type".to_string(), "application/json".to_string());
+                                headers
+                            },
+                            get_payload().unwrap().bytes
+        
+                        );
+                    }
+                    _ => {
+                        send_http_response(
+                            404,
+                            default_headers.clone(),
+                            "Not Found".to_string().as_bytes().to_vec(),
+                        );
+                        continue;
+                    }
+                }
             } else {
                 print_to_terminal(0, "librarian: got message from unknown source");
             }
