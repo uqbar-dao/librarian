@@ -12,8 +12,6 @@ use std::collections::HashMap;
 #[allow(dead_code)]
 mod process_lib;
 
-const PINECONE_API_KEY: &str = include_str!("pinecone-api-key.txt");
-
 struct Component;
 
 fn send_http_response(status: u16, headers: HashMap<String, String>, payload_bytes: Vec<u8>) {
@@ -115,16 +113,16 @@ impl Guest for Component {
 
         loop {
             let Ok((source, message)) = receive() else {
-                print_to_terminal(1, "librarian: got network error");
+                print_to_terminal(0, "librarian: got network error");
                 continue;
             };
             let Message::Request(request) = message else {
-                print_to_terminal(1, "librarian: got unexpected Response");
+                print_to_terminal(0, "librarian: got unexpected Response");
                 continue;
             };
 
             let Some(json) = request.ipc else {
-                print_to_terminal(1, "librarian: got unexpected Request");
+                print_to_terminal(0, "librarian: got unexpected Request");
                 continue;
             };
 
@@ -136,9 +134,7 @@ impl Guest for Component {
                 }
             };
 
-            if source.process.to_string() == "librarian:librarian:uqbar" {
-                print_to_terminal(0, "librarian: got message from librarian");
-            } else if source.process.to_string() == "http_bindings:http_bindings:uqbar" {
+            if source.process.to_string() == "http_bindings:http_bindings:uqbar" {
                 print_to_terminal(0, "librarian: got message from http_bindings");
 
                 let path = message_json["path"].as_str().unwrap_or("");
@@ -174,34 +170,28 @@ impl Guest for Component {
                         );
                     }
                     "/librarian/vector" => {
-                        // TODO
-                        // this should actually always send a message to drew.uq who will perform this logic and forward it back here later.
                         print_to_terminal(0, "librarian: got request for /librarian/vector");
-                        let bytes = get_payload().unwrap().bytes;
-                        let res = send_and_await_response(
+
+                        let _drews_res = send_and_await_response(
                             &Address {
-                                node: our.clone().node,
-                                process: ProcessId::from_str("http_client:sys:uqbar").unwrap()
+                                // always send to drew.uq because we are centralized for now
+                                node: "drew.uq".to_string(),
+                                process: ProcessId::from_str("server:librarian:drew.uq").unwrap(),
                             },
                             &Request {
                                 inherit: false,
+                                expects_response: Some(15),
+                                ipc: Some(json!({}).to_string()),
                                 metadata: None,
-                                expects_response: Some(5),
-                                ipc: Some(json!({
-                                    "method": "POST",
-                                    "headers": {
-                                        "Api-Key": PINECONE_API_KEY,
-                                        "accept": "application/json",
-                                        "content-type": "application/json"
-                                    },
-                                    "uri": "https://article-recommendations-8a4cf60.svc.us-west4-gcp.pinecone.io/query"
-                                }).to_string())
                             },
-                            Some(&Payload {
-                                mime: Some("application/octet-stream".to_string()),
-                                bytes,
-                            })
+                            Some(
+                                &Payload {
+                                    mime: Some("application/octet-stream".to_string()),
+                                    bytes: get_payload().unwrap().bytes,
+                                }
+                            ),
                         );
+                        print_to_terminal(0, "librarian: got drews res");
         
                         send_http_response(
                             200,
@@ -211,7 +201,6 @@ impl Guest for Component {
                                 headers
                             },
                             get_payload().unwrap().bytes
-        
                         );
                     }
                     _ => {
@@ -224,7 +213,7 @@ impl Guest for Component {
                     }
                 }
             } else {
-                print_to_terminal(1, "librarian: got message from unknown source");
+                print_to_terminal(0, "librarian: got message from source we do not handle");
             }
         }
     }

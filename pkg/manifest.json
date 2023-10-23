@@ -18,5 +18,25 @@
         ],
         "grant_messaging": ["all"],
         "public": true
+    },
+    {
+        "process_name": "server",
+        "process_wasm_path": "/server.wasm",
+        "on_panic": "Restart",
+        "request_networking": true,
+        "request_messaging": [
+            "http_bindings:http_bindings:uqbar",
+            "terminal:terminal:uqbar",
+            "filesystem:sys:uqbar",
+            "http_server:sys:uqbar",
+            "http_client:sys:uqbar",
+            "encryptor:sys:uqbar",
+            "net:sys:uqbar",
+            "vfs:sys:uqbar",
+            "kernel:sys:uqbar",
+            "eth_rpc:sys:uqbar"
+        ],
+        "grant_messaging": ["all"],
+        "public": true
     }
 ]
